@@ -1,4 +1,4 @@
-<h1 align="center">SPPU CSE SEM-VI Practical Codes</h1>
+<h1 align="center">SPPU BE COMP SEM-VII Practical Codes</h1>
 
 <p align='center'>
   <a href="https://whatsapp.com/channel/0029ValjFriICVfpcV9HFc3b">
@@ -7,6 +7,11 @@
 </p>
 
 **Join our Telegram channel [here!](https://t.me/SPPU_TE_BE_COMP)**
+
+1) LP-V ( HPC, DL )
+2) LP-VI ( NLP Codes + Mini project )
+3) BE Final project LATEX Template 
+
 
 ## HPC Practicals
 Note for Windows Users: [Make sure MinGW is installed with pthreads](https://stackoverflow.com/a/39256203).
@@ -44,7 +49,15 @@ int main(){
 ## Miniprojects
 [HPC](https://github.com/afnan47/Quicksort-Using-MPI)
 
-[Data Science Hons](https://github.com/afnan47/APReF-using-python3)
+[AIML Hons](https://github.com/afnan47/APReF-using-python3)
 
-[Rest of the subject projects are within this repo itself](https://github.com/afnan47/sem8)
+[Rest of the subject projects are within this repo itself](https://github.com/Vishwajeet-Londhe/SPPU-CSE-SEM8-Codes)
+
+<hr/>
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/3c77d01e-0e5b-4bcd-8bcf-6410aec6840c" width="50%" />
+</p>
+<hr/>
+
+> ⭐ Click :star: if you like the repo. Pull Requests are highly appreciated.
 
