@@ -5,93 +5,149 @@
 
 using namespace std;
 
-// Graph class representing the adjacency list
 class Graph {
-    int V;  // Number of vertices
-    vector<vector<int>> adj;  // Adjacency list
+    int V;
+    vector<vector<int>> adj;
 
 public:
-    Graph(int V) : V(V), adj(V) {}
-
-    // Add an edge to the graph
-    void addEdge(int v, int w) {
-        adj[v].push_back(w);
+    Graph(int V) {
+        this->V = V;
+        adj.resize(V);
     }
 
-    // Parallel Depth-First Search
-    void parallelDFS(int startVertex) {
-        vector<bool> visited(V, false);
-        parallelDFSUtil(startVertex, visited);
+    void addEdge(int u, int v) {
+        adj[u].push_back(v);
+        adj[v].push_back(u); // undirected graph
     }
 
-    // Parallel DFS utility function
-    void parallelDFSUtil(int v, vector<bool>& visited) {
-        visited[v] = true;
-        cout << v << " ";
-
-        #pragma omp parallel for
-        for (int i = 0; i < adj[v].size(); ++i) {
-            int n = adj[v][i];
-            if (!visited[n])
-                parallelDFSUtil(n, visited);
-        }
-    }
-
-    // Parallel Breadth-First Search
-    void parallelBFS(int startVertex) {
+    // 🔵 Parallel BFS
+    void parallelBFS(int start) {
         vector<bool> visited(V, false);
         queue<int> q;
 
-        visited[startVertex] = true;
-        q.push(startVertex);
+        visited[start] = true;
+        q.push(start);
+
+        cout << "\nParallel BFS Traversal: ";
 
         while (!q.empty()) {
-            int v = q.front();
-            q.pop();
-            cout << v << " ";
+            int size = q.size();
 
             #pragma omp parallel for
-            for (int i = 0; i < adj[v].size(); ++i) {
-                int n = adj[v][i];
-                if (!visited[n]) {
-                    visited[n] = true;
-                    q.push(n);
+            for (int i = 0; i < size; i++) {
+                int node = -1;
+
+                #pragma omp critical
+                {
+                    if (!q.empty()) {
+                        node = q.front();
+                        q.pop();
+                        cout << node << " ";
+                    }
+                }
+
+                if (node != -1) {
+                    for (int neighbor : adj[node]) {
+                        if (!visited[neighbor]) {
+                            #pragma omp critical
+                            {
+                                if (!visited[neighbor]) {
+                                    visited[neighbor] = true;
+                                    q.push(neighbor);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
+        cout << endl;
+    }
+
+    // 🔴 Parallel DFS Utility
+    void parallelDFSUtil(int node, vector<bool> &visited) {
+        bool alreadyVisited;
+
+        #pragma omp critical
+        {
+            alreadyVisited = visited[node];
+            if (!visited[node]) {
+                visited[node] = true;
+                cout << node << " ";
+            }
+        }
+
+        if (alreadyVisited) return;
+
+        #pragma omp parallel for
+        for (int i = 0; i < adj[node].size(); i++) {
+            int neighbor = adj[node][i];
+
+            if (!visited[neighbor]) {
+                #pragma omp task
+                parallelDFSUtil(neighbor, visited);
+            }
+        }
+    }
+
+    // 🔴 Parallel DFS
+    void parallelDFS(int start) {
+        vector<bool> visited(V, false);
+
+        cout << "\nParallel DFS Traversal: ";
+
+        #pragma omp parallel
+        {
+            #pragma omp single
+            {
+                parallelDFSUtil(start, visited);
+            }
+        }
+
+        cout << endl;
     }
 };
 
 int main() {
-    // Create a graph
-    Graph g(7);
-    g.addEdge(0, 1);
-    g.addEdge(0, 2);
-    g.addEdge(1, 3);
-    g.addEdge(1, 4);
-    g.addEdge(2, 5);
-    g.addEdge(2, 6);
-    
-    /*
-        0 -------->1
-        |         / \
-        |        /   \
-        |       /     \
-        v       v       v
-        2 ----> 3       4
-        |      |
-        |      |
-        v      v
-        5      6
-    */
+    int V, E;
 
-    cout << "Depth-First Search (DFS): ";
-    g.parallelDFS(0);
-    cout << endl;
+    cout << "Enter number of vertices: ";
+    cin >> V;
 
-    cout << "Breadth-First Search (BFS): ";
-    g.parallelBFS(0);
-    cout << endl;
+    Graph g(V);
+
+    cout << "Enter number of edges: ";
+    cin >> E;
+
+    cout << "Enter edges (u v):\n";
+    for (int i = 0; i < E; i++) {
+        int u, v;
+        cin >> u >> v;
+        g.addEdge(u, v);
+    }
+
+    int start;
+    cout << "Enter starting vertex: ";
+    cin >> start;
+
+    g.parallelBFS(start);
+    g.parallelDFS(start);
 
     return 0;
 }
+
+    //    0
+    //    / \
+    //   1   2
+    //  / \   \
+    // 3   4   5
+
+// Enter number of vertices: 6
+// Enter number of edges: 5
+// Enter edges (u v):
+// 0 1
+// 0 2
+// 1 3
+// 1 4
+// 2 5
+// Enter starting vertex: 0 
