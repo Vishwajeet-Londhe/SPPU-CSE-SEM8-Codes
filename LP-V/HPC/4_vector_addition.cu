@@ -1,73 +1,47 @@
-%%cu
-#include <iostream>
-using namespace std;
+#include <stdio.h>
 
-__global__ void add(int* A, int* B, int* C, int size) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (tid < size) {
-        C[tid] = A[tid] + B[tid];
+__global__ void vectorAdd(int *A, int *B, int *C, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        C[i] = A[i] + B[i];
     }
-}
-
-
-void initialize(int* vector, int size) {
-    for (int i = 0; i < size; i++) {
-        vector[i] = rand() % 10;
-    }
-}
-
-void print(int* vector, int size) {
-    for (int i = 0; i < size; i++) {
-        cout << vector[i] << " ";
-    }
-    cout << endl;
 }
 
 int main() {
-    int N = 4;
-    int* A, * B, * C;
+    int n = 1024;
 
-    int vectorSize = N;
-    size_t vectorBytes = vectorSize * sizeof(int);
+    int h_A[n], h_B[n], h_C[n];
 
-    A = new int[vectorSize];
-    B = new int[vectorSize];
-    C = new int[vectorSize];
+    // Initialize vectors
+    for (int i = 0; i < n; i++) {
+        h_A[i] = i;
+        h_B[i] = i * 2;
+    }
 
-    initialize(A, vectorSize);
-    initialize(B, vectorSize);
+    int *d_A, *d_B, *d_C;
 
-    cout << "Vector A: ";
-    print(A, N);
-    cout << "Vector B: ";
-    print(B, N);
+    cudaMalloc((void**)&d_A, n * sizeof(int));
+    cudaMalloc((void**)&d_B, n * sizeof(int));
+    cudaMalloc((void**)&d_C, n * sizeof(int));
 
-    int* X, * Y, * Z;
-    cudaMalloc(&X, vectorBytes);
-    cudaMalloc(&Y, vectorBytes);
-    cudaMalloc(&Z, vectorBytes);
+    cudaMemcpy(d_A, h_A, n * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, h_B, n * sizeof(int), cudaMemcpyHostToDevice);
 
-    cudaMemcpy(X, A, vectorBytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(Y, B, vectorBytes, cudaMemcpyHostToDevice);
+    int blockSize = 256;
+    int gridSize = (n + blockSize - 1) / blockSize;
 
-    int threadsPerBlock = 256;
-    int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
+    vectorAdd<<<gridSize, blockSize>>>(d_A, d_B, d_C, n);
 
-    add<<<blocksPerGrid, threadsPerBlock>>>(X, Y, Z, N);
+    cudaMemcpy(h_C, d_C, n * sizeof(int), cudaMemcpyDeviceToHost);
 
-    cudaMemcpy(C, Z, vectorBytes, cudaMemcpyDeviceToHost);
+    printf("First 10 Results:\n");
+    for (int i = 0; i < 10; i++) {
+        printf("%d + %d = %d\n", h_A[i], h_B[i], h_C[i]);
+    }
 
-    cout << "Addition: ";
-    print(C, N);
-
-    delete[] A;
-    delete[] B;
-    delete[] C;
-
-    cudaFree(X);
-    cudaFree(Y);
-    cudaFree(Z);
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
 
     return 0;
 }

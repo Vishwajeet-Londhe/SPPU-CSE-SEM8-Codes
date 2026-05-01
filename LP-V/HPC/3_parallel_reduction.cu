@@ -1,179 +1,116 @@
-%%cu
 #include <stdio.h>
+#include <limits.h>
 
 #define BLOCK_SIZE 256
 
-// Kernel for parallel reduction using min operation
-__global__ void reduceMin(int* input, int* output, int size) {
+__global__ void reduceSum(int *input, int *output, int n) {
     __shared__ int sdata[BLOCK_SIZE];
-    unsigned int tid = threadIdx.x;
-    unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-    // Load data into shared memory
-    if (i < size) {
-        sdata[tid] = input[i];
-    } else {
-        sdata[tid] = INT_MAX;
-    }
+    int tid = threadIdx.x;
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
 
+    sdata[tid] = (i < n) ? input[i] : 0;
     __syncthreads();
 
-    // Perform reduction within each block
-    for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-        if (tid < stride) {
-            sdata[tid] = min(sdata[tid], sdata[tid + stride]);
-        }
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s)
+            sdata[tid] += sdata[tid + s];
         __syncthreads();
     }
 
-    // Write the result for this block to global memory
-    if (tid == 0) {
+    if (tid == 0)
         output[blockIdx.x] = sdata[0];
-    }
 }
 
-// Kernel for parallel reduction using max operation
-__global__ void reduceMax(int* input, int* output, int size) {
+__global__ void reduceMin(int *input, int *output, int n) {
     __shared__ int sdata[BLOCK_SIZE];
-    unsigned int tid = threadIdx.x;
-    unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-    // Load data into shared memory
-    if (i < size) {
-        sdata[tid] = input[i];
-    } else {
-        sdata[tid] = INT_MIN;
-    }
+    int tid = threadIdx.x;
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
 
+    sdata[tid] = (i < n) ? input[i] : INT_MAX;
     __syncthreads();
 
-    // Perform reduction within each block
-    for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-        if (tid < stride) {
-            sdata[tid] = max(sdata[tid], sdata[tid + stride]);
-        }
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s)
+            if (sdata[tid + s] < sdata[tid])
+                sdata[tid] = sdata[tid + s];
         __syncthreads();
     }
 
-    // Write the result for this block to global memory
-    if (tid == 0) {
+    if (tid == 0)
         output[blockIdx.x] = sdata[0];
-    }
 }
 
-// Kernel for parallel reduction using sum operation
-__global__ void reduceSum(int* input, int* output, int size) {
+__global__ void reduceMax(int *input, int *output, int n) {
     __shared__ int sdata[BLOCK_SIZE];
-    unsigned int tid = threadIdx.x;
-    unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-    // Load data into shared memory
-    if (i < size) {
-        sdata[tid] = input[i];
-    } else {
-        sdata[tid] = 0;
-    }
+    int tid = threadIdx.x;
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
 
+    sdata[tid] = (i < n) ? input[i] : INT_MIN;
     __syncthreads();
 
-    // Perform reduction within each block
-    for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-        if (tid < stride) {
-            sdata[tid] += sdata[tid + stride];
-        }
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s)
+            if (sdata[tid + s] > sdata[tid])
+                sdata[tid] = sdata[tid + s];
         __syncthreads();
     }
 
-    // Write the result for this block to global memory
-    if (tid == 0) {
+    if (tid == 0)
         output[blockIdx.x] = sdata[0];
-    }
-}
-
-// Kernel for parallel reduction using average operation
-__global__ void reduceAverage(int* input, float* output, int size) {
-    __shared__ float sdata[BLOCK_SIZE];
-    unsigned int tid = threadIdx.x;
-    unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-
-    // Load data into shared memory
-    if (i < size) {
-        sdata[tid] = static_cast<float>(input[i]);
-    } else {
-        sdata[tid] = 0.0f;
-    }
-
-    __syncthreads();
-
-    // Perform reduction within each block
-    for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-        if (tid < stride) {
-            sdata[tid] += sdata[tid + stride];
-        }
-        __syncthreads();
-    }
-
-    // Write the result for this block to global memory
-    if (tid == 0) {
-        output[blockIdx.x] = sdata[0] / static_cast<float>(size);
-    }
 }
 
 int main() {
-    // Input array
-    const int array_size = 256;
-    int input[array_size];
+    int n = 1024;
+    int h_input[n];
 
-    // Initialize input array
-    for (int i = 0; i < array_size; ++i) {
-        input[i] = i + 1;
-    }
+    for (int i = 0; i < n; i++)
+        h_input[i] = i + 1;
 
-    // Allocate device memory
-    int* d_input;
-    int* d_output_min;
-    int* d_output_max;
-    int* d_output_sum;
-    float* d_output_avg;
-    cudaMalloc((void**)&d_input, sizeof(int) * array_size);
-    cudaMalloc((void**)&d_output_min, sizeof(int) * array_size);
-    cudaMalloc((void**)&d_output_max, sizeof(int) * array_size);
-    cudaMalloc((void**)&d_output_sum, sizeof(int) * array_size);
-    cudaMalloc((void**)&d_output_avg, sizeof(float) * array_size);
+    int *d_input, *d_output;
+    int gridSize = (n + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
-    // Copy input array to device memory
-    cudaMemcpy(d_input, input, sizeof(int) * array_size, cudaMemcpyHostToDevice);
+    cudaMalloc(&d_input, n * sizeof(int));
+    cudaMalloc(&d_output, gridSize * sizeof(int));
 
-    // Determine the number of threads and blocks
-    int threads_per_block = BLOCK_SIZE;
-    int blocks_per_grid = (array_size + threads_per_block - 1) / threads_per_block;
+    cudaMemcpy(d_input, h_input, n * sizeof(int), cudaMemcpyHostToDevice);
 
-    // Launch the kernels for parallel reduction
-    reduceMin<<<blocks_per_grid, threads_per_block>>>(d_input, d_output_min, array_size);
-    reduceMax<<<blocks_per_grid, threads_per_block>>>(d_input, d_output_max, array_size);
-    reduceSum<<<blocks_per_grid, threads_per_block>>>(d_input, d_output_sum, array_size);
-    reduceAverage<<<blocks_per_grid, threads_per_block>>>(d_input, d_output_avg, array_size);
+    int h_output[gridSize];
 
-    // Copy the results back to the host
-    int min_result, max_result, sum_result;
-    float avg_result;
-    cudaMemcpy(&min_result, d_output_min, sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&max_result, d_output_max, sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&sum_result, d_output_sum, sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&avg_result, d_output_avg, sizeof(float), cudaMemcpyDeviceToHost);
+    // SUM
+    reduceSum<<<gridSize, BLOCK_SIZE>>>(d_input, d_output, n);
+    cudaMemcpy(h_output, d_output, gridSize * sizeof(int), cudaMemcpyDeviceToHost);
 
-    // Print the results
-    printf("Minimum value: %d\n", min_result);
-    printf("Maximum value: %d\n", max_result);
-    printf("Sum: %d\n", sum_result);
-    printf("Average: %.2f\n", avg_result);
+    int sum = 0;
+    for (int i = 0; i < gridSize; i++) sum += h_output[i];
 
-    // Free device memory
+    // MIN
+    reduceMin<<<gridSize, BLOCK_SIZE>>>(d_input, d_output, n);
+    cudaMemcpy(h_output, d_output, gridSize * sizeof(int), cudaMemcpyDeviceToHost);
+
+    int min = h_output[0];
+    for (int i = 1; i < gridSize; i++)
+        if (h_output[i] < min) min = h_output[i];
+
+    // MAX
+    reduceMax<<<gridSize, BLOCK_SIZE>>>(d_input, d_output, n);
+    cudaMemcpy(h_output, d_output, gridSize * sizeof(int), cudaMemcpyDeviceToHost);
+
+    int max = h_output[0];
+    for (int i = 1; i < gridSize; i++)
+        if (h_output[i] > max) max = h_output[i];
+
+    float avg = (float)sum / n;
+
+    printf("Min = %d\n", min);
+    printf("Max = %d\n", max);
+    printf("Sum = %d\n", sum);
+    printf("Average = %.2f\n", avg);
+
     cudaFree(d_input);
-    cudaFree(d_output_min);
-    cudaFree(d_output_max);
-    cudaFree(d_output_sum);
-    cudaFree(d_output_avg);
+    cudaFree(d_output);
 
     return 0;
 }
