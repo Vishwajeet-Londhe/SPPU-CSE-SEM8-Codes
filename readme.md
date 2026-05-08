@@ -47,9 +47,6 @@ int main(){
 [YouTube Playlist](https://youtube.com/playlist?list=PLf2Wj8X3RbBRy-zlDkrbMPuFbb6peTeTG)
 
 ## Miniprojects
-[HPC](https://github.com/afnan47/Quicksort-Using-MPI)
-
-[AIML Hons](https://github.com/afnan47/APReF-using-python3)
 
 [Rest of the subject projects are within this repo itself](https://github.com/Vishwajeet-Londhe/SPPU-CSE-SEM8-Codes)
 
