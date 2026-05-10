@@ -1,116 +1,136 @@
 #include <stdio.h>
-#include <limits.h>
+#include <cuda.h>
 
-#define BLOCK_SIZE 256
+#define SIZE 1024
+#define THREADS 256
 
-__global__ void reduceSum(int *input, int *output, int n) {
-    __shared__ int sdata[BLOCK_SIZE];
+__global__ void sum(int *a,int *o){
+    __shared__ int s[THREADS];
+    int t=threadIdx.x,i=blockIdx.x*blockDim.x+t;
 
-    int tid = threadIdx.x;
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-
-    sdata[tid] = (i < n) ? input[i] : 0;
+    s[t]=a[i];
     __syncthreads();
 
-    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (tid < s)
-            sdata[tid] += sdata[tid + s];
+    for(int st=blockDim.x/2;st>0;st/=2){
+        if(t<st) s[t]+=s[t+st];
         __syncthreads();
     }
 
-    if (tid == 0)
-        output[blockIdx.x] = sdata[0];
+    if(t==0) o[blockIdx.x]=s[0];
 }
 
-__global__ void reduceMin(int *input, int *output, int n) {
-    __shared__ int sdata[BLOCK_SIZE];
+__global__ void min(int *a,int *o){
+    __shared__ int s[THREADS];
+    int t=threadIdx.x,i=blockIdx.x*blockDim.x+t;
 
-    int tid = threadIdx.x;
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-
-    sdata[tid] = (i < n) ? input[i] : INT_MAX;
+    s[t]=a[i];
     __syncthreads();
 
-    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (tid < s)
-            if (sdata[tid + s] < sdata[tid])
-                sdata[tid] = sdata[tid + s];
+    for(int st=blockDim.x/2;st>0;st/=2){
+        if(t<st && s[t+st]<s[t]) s[t]=s[t+st];
         __syncthreads();
     }
 
-    if (tid == 0)
-        output[blockIdx.x] = sdata[0];
+    if(t==0) o[blockIdx.x]=s[0];
 }
 
-__global__ void reduceMax(int *input, int *output, int n) {
-    __shared__ int sdata[BLOCK_SIZE];
+__global__ void max(int *a,int *o){
+    __shared__ int s[THREADS];
+    int t=threadIdx.x,i=blockIdx.x*blockDim.x+t;
 
-    int tid = threadIdx.x;
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-
-    sdata[tid] = (i < n) ? input[i] : INT_MIN;
+    s[t]=a[i];
     __syncthreads();
 
-    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (tid < s)
-            if (sdata[tid + s] > sdata[tid])
-                sdata[tid] = sdata[tid + s];
+    for(int st=blockDim.x/2;st>0;st/=2){
+        if(t<st && s[t+st]>s[t]) s[t]=s[t+st];
         __syncthreads();
     }
 
-    if (tid == 0)
-        output[blockIdx.x] = sdata[0];
+    if(t==0) o[blockIdx.x]=s[0];
 }
 
-int main() {
-    int n = 1024;
-    int h_input[n];
+int main(){
 
-    for (int i = 0; i < n; i++)
-        h_input[i] = i + 1;
+    int a[SIZE],out[SIZE/THREADS];
 
-    int *d_input, *d_output;
-    int gridSize = (n + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    for(int i=0;i<SIZE;i++) a[i]=i+1;
 
-    cudaMalloc(&d_input, n * sizeof(int));
-    cudaMalloc(&d_output, gridSize * sizeof(int));
+    int *da,*do_;
+    int blocks=SIZE/THREADS;
 
-    cudaMemcpy(d_input, h_input, n * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMalloc(&da,SIZE*sizeof(int));
+    cudaMalloc(&do_,blocks*sizeof(int));
 
-    int h_output[gridSize];
+    cudaMemcpy(da,a,SIZE*sizeof(int),cudaMemcpyHostToDevice);
+
+    cudaEvent_t s,e;
+    float t;
+
+    cudaEventCreate(&s);
+    cudaEventCreate(&e);
 
     // SUM
-    reduceSum<<<gridSize, BLOCK_SIZE>>>(d_input, d_output, n);
-    cudaMemcpy(h_output, d_output, gridSize * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaEventRecord(s);
+    sum<<<blocks,THREADS>>>(da,do_);
+    cudaEventRecord(e);
 
-    int sum = 0;
-    for (int i = 0; i < gridSize; i++) sum += h_output[i];
+    cudaEventSynchronize(e);
+    cudaEventElapsedTime(&t,s,e);
+
+    cudaMemcpy(out,do_,blocks*sizeof(int),cudaMemcpyDeviceToHost);
+
+    int sm=0;
+
+    for(int i=0;i<blocks;i++) sm+=out[i];
+
+    printf("Sum=%d\nTime=%f ms\n\n",sm,t);
 
     // MIN
-    reduceMin<<<gridSize, BLOCK_SIZE>>>(d_input, d_output, n);
-    cudaMemcpy(h_output, d_output, gridSize * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaEventRecord(s);
+    min<<<blocks,THREADS>>>(da,do_);
+    cudaEventRecord(e);
 
-    int min = h_output[0];
-    for (int i = 1; i < gridSize; i++)
-        if (h_output[i] < min) min = h_output[i];
+    cudaEventSynchronize(e);
+    cudaEventElapsedTime(&t,s,e);
+
+    cudaMemcpy(out,do_,blocks*sizeof(int),cudaMemcpyDeviceToHost);
+
+    int mn=out[0];
+
+    for(int i=1;i<blocks;i++)
+        if(out[i]<mn) mn=out[i];
+
+    printf("Min=%d\nTime=%f ms\n\n",mn,t);
 
     // MAX
-    reduceMax<<<gridSize, BLOCK_SIZE>>>(d_input, d_output, n);
-    cudaMemcpy(h_output, d_output, gridSize * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaEventRecord(s);
+    max<<<blocks,THREADS>>>(da,do_);
+    cudaEventRecord(e);
 
-    int max = h_output[0];
-    for (int i = 1; i < gridSize; i++)
-        if (h_output[i] > max) max = h_output[i];
+    cudaEventSynchronize(e);
+    cudaEventElapsedTime(&t,s,e);
 
-    float avg = (float)sum / n;
+    cudaMemcpy(out,do_,blocks*sizeof(int),cudaMemcpyDeviceToHost);
 
-    printf("Min = %d\n", min);
-    printf("Max = %d\n", max);
-    printf("Sum = %d\n", sum);
-    printf("Average = %.2f\n", avg);
+    int mx=out[0];
 
-    cudaFree(d_input);
-    cudaFree(d_output);
+    for(int i=1;i<blocks;i++)
+        if(out[i]>mx) mx=out[i];
 
-    return 0;
+    printf("Max=%d\nTime=%f ms\n\n",mx,t);
+
+    // AVG
+    cudaEventRecord(s);
+
+    float avg=(float)sm/SIZE;
+
+    cudaEventRecord(e);
+
+    cudaEventSynchronize(e);
+    cudaEventElapsedTime(&t,s,e);
+
+    printf("Average=%.2f\nTime=%f ms\n",avg,t);
+
+    cudaFree(da);
+    cudaFree(do_);
 }
