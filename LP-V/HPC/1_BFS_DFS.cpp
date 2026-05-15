@@ -17,91 +17,81 @@ public:
 
     void addEdge(int u, int v) {
         adj[u].push_back(v);
-        adj[v].push_back(u); // undirected graph
+        adj[v].push_back(u);
     }
 
-    // 🔵 Parallel BFS
-    void parallelBFS(int start) {
+    // Sequential BFS
+    void sequentialBFS(int start) {
+
         vector<bool> visited(V, false);
         queue<int> q;
 
         visited[start] = true;
         q.push(start);
 
-        cout << "\nParallel BFS Traversal: ";
+        cout << "\nSequential BFS: ";
 
         while (!q.empty()) {
-            int size = q.size();
 
-            #pragma omp parallel for
-            for (int i = 0; i < size; i++) {
-                int node = -1;
+            int node = q.front();
+            q.pop();
 
-                #pragma omp critical
-                {
-                    if (!q.empty()) {
-                        node = q.front();
-                        q.pop();
-                        cout << node << " ";
-                    }
-                }
+            cout << node << " ";
 
-                if (node != -1) {
-                    for (int neighbor : adj[node]) {
-                        if (!visited[neighbor]) {
-                            #pragma omp critical
-                            {
-                                if (!visited[neighbor]) {
-                                    visited[neighbor] = true;
-                                    q.push(neighbor);
-                                }
-                            }
-                        }
-                    }
+            for (int neighbor : adj[node]) {
+
+                if (!visited[neighbor]) {
+                    visited[neighbor] = true;
+                    q.push(neighbor);
                 }
             }
         }
         cout << endl;
     }
 
-    // 🔴 Parallel DFS Utility
-    void parallelDFSUtil(int node, vector<bool> &visited) {
-        bool alreadyVisited;
+    // Parallel BFS
+    void parallelBFS(int start) {
 
-        #pragma omp critical
-        {
-            alreadyVisited = visited[node];
-            if (!visited[node]) {
-                visited[node] = true;
-                cout << node << " ";
-            }
-        }
-
-        if (alreadyVisited) return;
-
-        #pragma omp parallel for
-        for (int i = 0; i < adj[node].size(); i++) {
-            int neighbor = adj[node][i];
-
-            if (!visited[neighbor]) {
-                #pragma omp task
-                parallelDFSUtil(neighbor, visited);
-            }
-        }
-    }
-
-    // 🔴 Parallel DFS
-    void parallelDFS(int start) {
         vector<bool> visited(V, false);
+        vector<int> frontier, next;
 
-        cout << "\nParallel DFS Traversal: ";
+        frontier.push_back(start);
+        visited[start] = true;
 
-        #pragma omp parallel
-        {
-            #pragma omp single
-            {
-                parallelDFSUtil(start, visited);
+        cout << "\nParallel BFS: ";
+
+        while (!frontier.empty()) {
+
+            next.clear();
+
+            #pragma omp parallel for
+            for (int i = 0; i < frontier.size(); i++) {
+
+                int node = frontier[i];
+
+                #pragma omp critical
+                cout << node << " ";
+
+                for (int neighbor : adj[node]) {
+
+                    bool add = false;
+
+                    #pragma omp critical
+                    {
+                        if (!visited[neighbor]) {
+                            visited[neighbor] = true;
+                            add = true;
+                        }
+                    }
+
+                    if (add) {
+                        #pragma omp critical
+                        next.push_back(neighbor);
+                    }
+                }
             }
+
+            frontier = next;
         }
 
         cout << endl;
@@ -109,45 +99,63 @@ public:
 };
 
 int main() {
-    int V, E;
 
-    cout << "Enter number of vertices: ";
-    cin >> V;
+    int V, E, start;
+
+    cout << "Enter vertices and edges: ";
+    cin >> V >> E;
 
     Graph g(V);
 
-    cout << "Enter number of edges: ";
-    cin >> E;
+    cout << "Enter edges:\n";
 
-    cout << "Enter edges (u v):\n";
     for (int i = 0; i < E; i++) {
+
         int u, v;
         cin >> u >> v;
+
         g.addEdge(u, v);
     }
 
-    int start;
     cout << "Enter starting vertex: ";
     cin >> start;
 
+    double t1 = omp_get_wtime();
+    g.sequentialBFS(start);
+    double t2 = omp_get_wtime();
+
+    cout << "Sequential Time: "
+         << t2 - t1 << " seconds\n";
+
+    t1 = omp_get_wtime();
     g.parallelBFS(start);
-    g.parallelDFS(start);
+    t2 = omp_get_wtime();
+
+    cout << "Parallel Time: "
+         << t2 - t1 << " seconds\n";
 
     return 0;
 }
 
-    //    0
-    //    / \
-    //   1   2
-    //  / \   \
-    // 3   4   5
+/*
+Example Graph:
 
-// Enter number of vertices: 6
-// Enter number of edges: 5
-// Enter edges (u v):
-// 0 1
-// 0 2
-// 1 3
-// 1 4
-// 2 5
-// Enter starting vertex: 0 
+        0
+       / \
+      1   2
+     / \   \
+    3   4   5
+Example Input:
+Enter vertices and edges:
+6 5
+
+Enter edges:
+0 1
+0 2
+1 3
+1 4
+2 5
+
+Enter starting vertex:
+0
+*/
