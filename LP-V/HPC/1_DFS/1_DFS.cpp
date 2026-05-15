@@ -82,6 +82,7 @@ int main() {
     int sizes[] = {100,500,2000,5000,10000};
     int threads = omp_get_max_threads();
 
+    cout << "Vishwajeet Londhe BE B 41237" << endl;
     cout<<"Threads: "<<threads<<endl<<endl;
     cout<<"Size\tSeqDFS\tParDFS\tSpeedup\tEfficiency"<<endl;
 
